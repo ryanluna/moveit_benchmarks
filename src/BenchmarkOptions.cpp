@@ -67,9 +67,9 @@ const std::string& BenchmarkOptions::getGroupName() const
     return group_name_;
 }
 
-const std::string& BenchmarkOptions::getOutputFilename() const
+const std::string& BenchmarkOptions::getOutputDirectory() const
 {
-    return output_filename_;
+    return output_directory_;
 }
 
 const std::string& BenchmarkOptions::getBenchmarkName() const
@@ -121,7 +121,7 @@ void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
     nh.param(std::string("benchmark_config/parameters/runs"), runs_, 10);
     nh.param(std::string("benchmark_config/parameters/timeout"), timeout_, 10.0);
     nh.param(std::string("benchmark_config/parameters/name"), benchmark_name_, std::string("MyBenchmark"));
-    nh.param(std::string("benchmark_config/parameters/output_file"), output_filename_, benchmark_name_ + std::string(".log"));
+    nh.param(std::string("benchmark_config/parameters/output_directory"), output_directory_, std::string(""));
     nh.param(std::string("benchmark_config/parameters/queries"), query_regex_, std::string(".*"));
     nh.param(std::string("benchmark_config/parameters/start_states"), start_state_regex_, std::string(""));
     nh.param(std::string("benchmark_config/parameters/goal_constraints"), goal_constraint_regex_, std::string(""));
@@ -138,7 +138,7 @@ void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
     ROS_INFO("Benchmark start state regex: '%s':", start_state_regex_.c_str());
     ROS_INFO("Benchmark goal constraint regex: '%s':", goal_constraint_regex_.c_str());
     ROS_INFO("Benchmark path constraint regex: '%s':", path_constraint_regex_.c_str());
-    ROS_INFO("Benchmark output file: %s", output_filename_.c_str());
+    ROS_INFO("Benchmark output directory: %s", output_directory_.c_str());
 }
 
 void BenchmarkOptions::readPlannerConfigs(ros::NodeHandle& nh)

@@ -61,7 +61,7 @@ public:
     int getNumRuns() const;
     double getTimeout() const;
     const std::string& getGroupName() const;
-    const std::string& getOutputFilename() const;
+    const std::string& getOutputDirectory() const;
     const std::string& getBenchmarkName() const;
     const std::string& getQueryRegex() const;
     const std::string& getStartStateRegex() const;
@@ -85,7 +85,7 @@ protected:
     int runs_;
     double timeout_;
     std::string group_name_;
-    std::string output_filename_;
+    std::string output_directory_;
     std::string benchmark_name_;
     std::string query_regex_;
     std::string start_state_regex_;

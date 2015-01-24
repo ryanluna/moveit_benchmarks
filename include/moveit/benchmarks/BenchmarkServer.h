@@ -98,9 +98,8 @@ protected:
     virtual void collectMetrics(PlannerRunData& metrics, const planning_interface::MotionPlanDetailedResponse& mp_res,
                                 bool solved, double total_time);
 
-    virtual void writeOutput(const std::string& output_filename, const std::string& goal_name,
-                             const std::map<std::string, std::vector<std::string> >& planners,
-                             const std::string& start_time, double benchmark_duration, const std::string& hostname, double timeout);
+    virtual void writeOutput(const BenchmarkRequest& brequest, const std::string& start_time,
+                             double benchmark_duration);
 
     /// Invoked before each run of a benchmark
     virtual void preRunEvent(moveit_msgs::MotionPlanRequest& request) {}

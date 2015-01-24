@@ -157,7 +157,6 @@ bool BenchmarkServer::runBenchmarks(const BenchmarkOptions& opts)
     clear();
     std::vector<BenchmarkRequest> queries;
     moveit_msgs::PlanningScene scene_msg;
-    std::string host = getHostname();
 
     if (initializeBenchmarks(opts, scene_msg, queries))
     {
@@ -186,9 +185,9 @@ bool BenchmarkServer::runBenchmarks(const BenchmarkOptions& opts)
             runBenchmark(queries[i].request, options_.getPlannerConfigurations(), options_.getNumRuns());
             double duration = (ros::WallTime::now() - startTime).toSec();
 
-            writeOutput(options_.getOutputFilename(), queries[i].name, options_.getPlannerConfigurations(),
+            writeOutput(queries[i],
                         boost::posix_time::to_iso_extended_string(startTime.toBoost()),
-                        duration, host, queries[i].request.allowed_planning_time);
+                        duration);
         }
 
         return true;
@@ -592,7 +591,7 @@ void BenchmarkServer::runBenchmark(moveit_msgs::MotionPlanRequest request, const
 void BenchmarkServer::collectMetrics(PlannerRunData& metrics, const planning_interface::MotionPlanDetailedResponse& mp_res,
                                      bool solved, double total_time)
 {
-    metrics["total_time REAL"] = boost::lexical_cast<std::string>(total_time);
+    metrics["time REAL"] = boost::lexical_cast<std::string>(total_time);
     metrics["solved BOOLEAN"] = boost::lexical_cast<std::string>(solved);
 
     if (solved)
@@ -677,15 +676,26 @@ void BenchmarkServer::collectMetrics(PlannerRunData& metrics, const planning_int
     }
 }
 
-void BenchmarkServer::writeOutput(const std::string& output_filename, const std::string& goal_name,
-                                  const std::map<std::string, std::vector<std::string> >& planners,
-                                  const std::string& start_time, double benchmark_duration, const std::string& hostname, double timeout)
+void BenchmarkServer::writeOutput(const BenchmarkRequest& brequest, const std::string& start_time,
+                                  double benchmark_duration)
 {
+    const std::map<std::string, std::vector<std::string> >& planners = options_.getPlannerConfigurations();
+
     size_t num_planners = 0;
     for(std::map<std::string, std::vector<std::string> >::const_iterator it = planners.begin(); it != planners.end(); ++it)
         num_planners += it->second.size();
 
-    std::string filename = output_filename.empty() ? ("moveit_benchmarks_" + hostname + "_" + start_time + ".log") : output_filename;
+    std::string hostname = getHostname();
+    if (hostname.empty())
+        hostname = "UNKNOWN";
+
+    std::string filename = options_.getOutputDirectory();
+    if (filename.size() && !filename[filename.size()-1] == '/')
+    {
+        filename.append("/");
+        // TODO: Make sure directory exists
+    }
+    filename += brequest.name + "_" + getHostname() + "_" + start_time + ".log";
     std::ofstream out(filename.c_str());
     if (!out)
     {
@@ -693,12 +703,30 @@ void BenchmarkServer::writeOutput(const std::string& output_filename, const std:
         return;
     }
 
-    out << "Experiment " << (planning_scene_->getName().empty() ? "NO_NAME" : planning_scene_->getName()) << std::endl;
-    out << "Running on " << (hostname.empty() ? "UNKNOWN" : hostname) << std::endl;
+    out << "Experiment " << brequest.name << std::endl;
+    out << "Running on " << hostname << std::endl;
     out << "Starting at " << start_time << std::endl;
-    out << "Goal name " << (goal_name.empty() ? "UNKNOWN" : goal_name) << std::endl;
-    out << timeout << " seconds per run" << std::endl;
+
+    // Experiment setup
+    moveit_msgs::PlanningScene scene_msg;
+    planning_scene_->getPlanningSceneMsg(scene_msg);
+    out << "<<<|" << std::endl;
+    out << "Motion plan request:" << std::endl << brequest.request << std::endl;
+    out << "Planning scene: " << std::endl << scene_msg << std::endl << "|>>>" << std::endl;
+
+    // Not writing optional cpu information
+
+    // The real random seed is unknown.  Writing a fake value
+    out << "0 is the random seed" << std::endl;
+    out << brequest.request.allowed_planning_time << " seconds per run" << std::endl;
+    // There is no memory cap
+    out << "-1 MB per run" << std::endl;
+    out << options_.getNumRuns() << " runs per planner" << std::endl;
     out << benchmark_duration << " seconds spent to collect the data" << std::endl;
+
+    // No enum types
+    out << "0 enum types" << std::endl;
+
     out << num_planners << " planners" << std::endl;
 
     size_t run_id = 0;
@@ -706,8 +734,7 @@ void BenchmarkServer::writeOutput(const std::string& output_filename, const std:
     {
         for(size_t i = 0; i < it->second.size(); ++i, ++run_id)
         {
-            // Write the name of the planner.  The name is "Plugin description_Planner name"
-            //out << planner_interfaces_[it->first]->getDescription() + "_" + it->second[i] << std::endl;
+            // Write the name of the planner.
             out << it->second[i] << std::endl;
 
             // in general, we could have properties specific for a planner;
