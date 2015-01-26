@@ -72,11 +72,6 @@ const std::string& BenchmarkOptions::getOutputDirectory() const
     return output_directory_;
 }
 
-const std::string& BenchmarkOptions::getBenchmarkName() const
-{
-    return benchmark_name_;
-}
-
 const std::string& BenchmarkOptions::getQueryRegex() const
 {
     return query_regex_;
@@ -97,9 +92,24 @@ const std::string& BenchmarkOptions::getPathConstraintRegex() const
     return path_constraint_regex_;
 }
 
+const std::string& BenchmarkOptions::getTrajectoryConstraintRegex() const
+{
+    return trajectory_constraint_regex_;
+}
+
 const std::map<std::string, std::vector<std::string> >& BenchmarkOptions::getPlannerConfigurations() const
 {
     return planners_;
+}
+
+const std::string& BenchmarkOptions::getWorkspaceFrameID() const
+{
+    return workspace_.header.frame_id;
+}
+
+const moveit_msgs::WorkspaceParameters& BenchmarkOptions::getWorkspaceParameters() const
+{
+    return workspace_;
 }
 
 void BenchmarkOptions::readWarehouseOptions(ros::NodeHandle& nh)
@@ -120,17 +130,19 @@ void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
 {
     nh.param(std::string("benchmark_config/parameters/runs"), runs_, 10);
     nh.param(std::string("benchmark_config/parameters/timeout"), timeout_, 10.0);
-    nh.param(std::string("benchmark_config/parameters/name"), benchmark_name_, std::string("MyBenchmark"));
     nh.param(std::string("benchmark_config/parameters/output_directory"), output_directory_, std::string(""));
     nh.param(std::string("benchmark_config/parameters/queries"), query_regex_, std::string(".*"));
     nh.param(std::string("benchmark_config/parameters/start_states"), start_state_regex_, std::string(""));
     nh.param(std::string("benchmark_config/parameters/goal_constraints"), goal_constraint_regex_, std::string(""));
     nh.param(std::string("benchmark_config/parameters/path_constraints"), path_constraint_regex_, std::string(""));
+    nh.param(std::string("benchmark_config/parameters/trajectory_constraints"), trajectory_constraint_regex_, std::string(""));
 
     if (!nh.getParam(std::string("benchmark_config/parameters/group"), group_name_))
         ROS_WARN("Benchmark group NOT specified");
 
-    ROS_INFO("Benchmark name: %s", benchmark_name_.c_str());
+    if (nh.hasParam("benchmark_config/parameters/workspace"))
+        readWorkspaceParameters(nh);
+
     ROS_INFO("Benchmark #runs: %d", runs_);
     ROS_INFO("Benchmark timeout: %f secs", timeout_);
     ROS_INFO("Benchmark group: %s", group_name_.c_str());
@@ -139,6 +151,24 @@ void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
     ROS_INFO("Benchmark goal constraint regex: '%s':", goal_constraint_regex_.c_str());
     ROS_INFO("Benchmark path constraint regex: '%s':", path_constraint_regex_.c_str());
     ROS_INFO("Benchmark output directory: %s", output_directory_.c_str());
+    ROS_INFO_STREAM("Benchmark workspace: " << workspace_);
+}
+
+void BenchmarkOptions::readWorkspaceParameters(ros::NodeHandle& nh)
+{
+    // Make sure all params exist
+    if (!nh.getParam("benchmark_config/parameters/workspace/frame_id", workspace_.header.frame_id))
+        ROS_WARN("Workspace frame_id not specified in benchmark config");
+
+    nh.param(std::string("benchmark_config/parameters/workspace/min_corner/x"), workspace_.min_corner.x, 0.0);
+    nh.param(std::string("benchmark_config/parameters/workspace/min_corner/y"), workspace_.min_corner.y, 0.0);
+    nh.param(std::string("benchmark_config/parameters/workspace/min_corner/z"), workspace_.min_corner.z, 0.0);
+
+    nh.param(std::string("benchmark_config/parameters/workspace/max_corner/x"), workspace_.max_corner.x, 0.0);
+    nh.param(std::string("benchmark_config/parameters/workspace/max_corner/y"), workspace_.max_corner.y, 0.0);
+    nh.param(std::string("benchmark_config/parameters/workspace/max_corner/z"), workspace_.max_corner.z, 0.0);
+
+    workspace_.header.stamp = ros::Time::now();
 }
 
 void BenchmarkOptions::readPlannerConfigs(ros::NodeHandle& nh)

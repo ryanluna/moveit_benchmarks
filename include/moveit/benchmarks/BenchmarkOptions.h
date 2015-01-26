@@ -41,6 +41,7 @@
 #include <map>
 #include <vector>
 #include <ros/ros.h>
+#include <moveit_msgs/WorkspaceParameters.h>
 
 namespace moveit_benchmarks
 {
@@ -62,12 +63,16 @@ public:
     double getTimeout() const;
     const std::string& getGroupName() const;
     const std::string& getOutputDirectory() const;
-    const std::string& getBenchmarkName() const;
     const std::string& getQueryRegex() const;
     const std::string& getStartStateRegex() const;
     const std::string& getGoalConstraintRegex() const;
     const std::string& getPathConstraintRegex() const;
+    const std::string& getTrajectoryConstraintRegex() const;
     const std::map<std::string, std::vector<std::string> >& getPlannerConfigurations() const;
+
+    const std::string& getWorkspaceFrameID() const;
+    const moveit_msgs::WorkspaceParameters& getWorkspaceParameters() const;
+
 
 protected:
     void readBenchmarkOptions(const std::string& ros_namespace);
@@ -75,6 +80,8 @@ protected:
     void readWarehouseOptions(ros::NodeHandle& nh);
     void readBenchmarkParameters(ros::NodeHandle& nh);
     void readPlannerConfigs(ros::NodeHandle& nh);
+
+    void readWorkspaceParameters(ros::NodeHandle& nh);
 
     /// warehouse parameters
     std::string hostname_;
@@ -86,15 +93,16 @@ protected:
     double timeout_;
     std::string group_name_;
     std::string output_directory_;
-    std::string benchmark_name_;
     std::string query_regex_;
     std::string start_state_regex_;
     std::string goal_constraint_regex_;
     std::string path_constraint_regex_;
+    std::string trajectory_constraint_regex_;
 
     /// planner configurations
     std::map<std::string, std::vector<std::string> > planners_;
 
+    moveit_msgs::WorkspaceParameters workspace_;
 };
 
 }

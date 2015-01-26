@@ -37,6 +37,7 @@
 #include "moveit/benchmarks/BenchmarkServer.h"
 
 #include <boost/regex.hpp>
+#include <boost/progress.hpp>
 #include <boost/math/constants/constants.hpp>
 #include <unistd.h>
 
@@ -178,9 +179,9 @@ bool BenchmarkServer::runBenchmarks(const BenchmarkOptions& opts)
             else
                 planning_scene_->usePlanningSceneMsg(scene_msg);
 
-            ROS_INFO("Benckmarking query '%s' (%lu of %lu)", queries[i].name.c_str(), i+1, queries.size());
             querySwitchEvent(queries[i].request);
 
+            ROS_INFO("Benchmarking query '%s' (%lu of %lu)", queries[i].name.c_str(), i+1, queries.size());
             ros::WallTime startTime = ros::WallTime::now();
             runBenchmark(queries[i].request, options_.getPlannerConfigurations(), options_.getNumRuns());
             double duration = (ros::WallTime::now() - startTime).toSec();
@@ -227,7 +228,7 @@ bool BenchmarkServer::initializeBenchmarks(const BenchmarkOptions& opts, moveit_
         psws_ = new moveit_warehouse::PlanningSceneWorldStorage(opts.getHostName(), opts.getPort());
         rs_ = new moveit_warehouse::RobotStateStorage(opts.getHostName(), opts.getPort());
         cs_ = new moveit_warehouse::ConstraintsStorage(opts.getHostName(), opts.getPort());
-        //tcs_ = new moveit_warehouse::TrajectoryConstraintsStorage(opts.getHostName(), opts.getPort());
+        tcs_ = new moveit_warehouse::TrajectoryConstraintsStorage(opts.getHostName(), opts.getPort());
     }
     catch(std::runtime_error& e)
     {
@@ -236,30 +237,37 @@ bool BenchmarkServer::initializeBenchmarks(const BenchmarkOptions& opts, moveit_
     }
 
     std::vector<StartState> start_states;
-    std::vector<Constraints> path_constraints;
-    std::vector<Constraints> goal_constraints;
+    std::vector<PathConstraints> path_constraints;
+    std::vector<PathConstraints> goal_constraints;
+    std::vector<TrajectoryConstraints> traj_constraints;
     std::vector<BenchmarkRequest> queries;
 
     const std::string& group_name = opts.getGroupName();
 
     bool ok = loadPlanningScene(opts.getSceneName(), scene_msg) &&
               loadStates(opts.getStartStateRegex(), start_states) &&
-              loadConstraints(opts.getGoalConstraintRegex(), goal_constraints) &&
-              loadConstraints(opts.getPathConstraintRegex(), path_constraints) &&
+              loadPathConstraints(opts.getGoalConstraintRegex(), goal_constraints) &&
+              loadPathConstraints(opts.getPathConstraintRegex(), path_constraints) &&
+              loadTrajectoryConstraints(opts.getTrajectoryConstraintRegex(), traj_constraints) &&
               loadQueries(opts.getQueryRegex(), opts.getSceneName(), queries);
 
     if (!ok)
         return false;
 
-    moveit_msgs::WorkspaceParameters workspace_parameters;
-    workspace_parameters.header.stamp = ros::Time::now();
-    workspace_parameters.min_corner.x =
-    workspace_parameters.min_corner.y =
-    workspace_parameters.min_corner.z = -10.0;
+    moveit_msgs::WorkspaceParameters workspace_parameters = opts.getWorkspaceParameters();
+    // Make sure that workspace_parameters are set
+    if (workspace_parameters.min_corner.x == workspace_parameters.max_corner.x && workspace_parameters.min_corner.x == 0.0 &&
+        workspace_parameters.min_corner.y == workspace_parameters.max_corner.y && workspace_parameters.min_corner.y == 0.0 &&
+        workspace_parameters.min_corner.z == workspace_parameters.max_corner.z && workspace_parameters.min_corner.z == 0.0)
+    {
+        workspace_parameters.min_corner.x =
+        workspace_parameters.min_corner.y =
+        workspace_parameters.min_corner.z = -5.0;
 
-    workspace_parameters.max_corner.x =
-    workspace_parameters.max_corner.y =
-    workspace_parameters.max_corner.z = 10.0;
+        workspace_parameters.max_corner.x =
+        workspace_parameters.max_corner.y =
+        workspace_parameters.max_corner.z = 5.0;
+    }
 
     // Create the combinations of BenchmarkRequests
 
@@ -309,12 +317,28 @@ bool BenchmarkServer::initializeBenchmarks(const BenchmarkOptions& opts, moveit_
         requests.insert(requests.end(), request_combos.begin(), request_combos.end());
     }
 
+    // 3) Trajectory constraints are also treated like goal constraints
+    for(size_t i = 0; i < traj_constraints.size(); ++i)
+    {
+        // Common benchmark request properties
+        BenchmarkRequest brequest;
+        brequest.name = traj_constraints[i].name;
+        brequest.request.trajectory_constraints = traj_constraints[i].constraints;
+        brequest.request.group_name = opts.getGroupName();
+        brequest.request.allowed_planning_time = opts.getTimeout();
+
+        std::vector<BenchmarkRequest> request_combos;
+        std::vector<PathConstraints> no_path_constraints;
+        createRequestCombinations(brequest, start_states, no_path_constraints, request_combos);
+        requests.insert(requests.end(), request_combos.begin(), request_combos.end());
+    }
+
     options_ = opts;
     return true;
 }
 
 void BenchmarkServer::createRequestCombinations(const BenchmarkRequest& brequest, const std::vector<StartState>& start_states,
-                                                const std::vector<Constraints>& path_constraints, std::vector<BenchmarkRequest>& requests)
+                                                const std::vector<PathConstraints>& path_constraints, std::vector<BenchmarkRequest>& requests)
 {
     // Use default start state
     if (start_states.empty())
@@ -489,14 +513,13 @@ bool BenchmarkServer::loadStates(const std::string& regex, std::vector<StartStat
                 moveit_warehouse::RobotStateWithMetadata robot_state;
                 try
                 {
-                    rs_->getRobotState(robot_state, state_names[i]);
-
-                    StartState start_state;
-                    start_state.state = moveit_msgs::RobotState(*robot_state);
-                    start_state.name = state_names[i];
-                    start_states.push_back(start_state);
-
-                    //start_states.push_back(moveit_msgs::RobotState(*robot_state));
+                    if (rs_->getRobotState(robot_state, state_names[i]))
+                    {
+                        StartState start_state;
+                        start_state.state = moveit_msgs::RobotState(*robot_state);
+                        start_state.name = state_names[i];
+                        start_states.push_back(start_state);
+                    }
                 }
                 catch (std::runtime_error &ex)
                 {
@@ -513,7 +536,7 @@ bool BenchmarkServer::loadStates(const std::string& regex, std::vector<StartStat
     return true;
 }
 
-bool BenchmarkServer::loadConstraints(const std::string& regex, std::vector<Constraints>& constraints)
+bool BenchmarkServer::loadPathConstraints(const std::string& regex, std::vector<PathConstraints>& constraints)
 {
     if (regex.size())
     {
@@ -523,25 +546,58 @@ bool BenchmarkServer::loadConstraints(const std::string& regex, std::vector<Cons
         for (std::size_t i = 0 ; i < cnames.size() ; ++i)
         {
             moveit_warehouse::ConstraintsWithMetadata constr;
-            bool got_constraints = false;
             try
             {
-                got_constraints = cs_->getConstraints(constr, cnames[i]);
+                if (cs_->getConstraints(constr, cnames[i]))
+                {
+                    PathConstraints constraint;
+                    constraint.constraints.push_back(*constr);
+                    constraint.name = cnames[i];
+                }
             }
             catch (std::runtime_error &ex)
             {
-                ROS_ERROR("Runtime error when loading constraint '%s': %s", cnames[i].c_str(), ex.what());
+                ROS_ERROR("Runtime error when loading path constraint '%s': %s", cnames[i].c_str(), ex.what());
                 continue;
             }
-
-            Constraints constraint;
-            constraint.constraints.push_back(*constr);
-            constraint.name = cnames[i];
-            constraints.push_back(constraint);
         }
 
         if (constraints.empty())
-            ROS_WARN("No constraints found that match regex: '%s'", regex.c_str());
+            ROS_WARN("No path constraints found that match regex: '%s'", regex.c_str());
+    }
+
+    return true;
+}
+
+bool BenchmarkServer::loadTrajectoryConstraints(const std::string& regex, std::vector<TrajectoryConstraints>& constraints)
+{
+    if (regex.size())
+    {
+        std::vector<std::string> cnames;
+        tcs_->getKnownTrajectoryConstraints(regex, cnames);
+
+        for(size_t i = 0; i < cnames.size(); ++i)
+        {
+            moveit_warehouse::TrajectoryConstraintsWithMetadata constr;
+            try
+            {
+                if(tcs_->getTrajectoryConstraints(constr, cnames[i]))
+                {
+                    TrajectoryConstraints constraint;
+                    constraint.constraints = *constr;
+                    constraint.name = cnames[i];
+                    constraints.push_back(constraint);
+                }
+            }
+            catch (std::runtime_error &ex)
+            {
+                ROS_ERROR("Runtime error when loading trajectory constraint '%s': %s", cnames[i].c_str(), ex.what());
+                continue;
+            }
+        }
+
+        if (constraints.empty())
+            ROS_WARN("No trajectory constraints found that match regex: '%s'", regex.c_str());
     }
 
     return true;
@@ -550,6 +606,12 @@ bool BenchmarkServer::loadConstraints(const std::string& regex, std::vector<Cons
 void BenchmarkServer::runBenchmark(moveit_msgs::MotionPlanRequest request, const std::map<std::string, std::vector<std::string> >& planners, int runs)
 {
     benchmark_data_.clear();
+
+    unsigned int num_planners = 0;
+    for(std::map<std::string, std::vector<std::string> >::const_iterator it = planners.begin(); it != planners.end(); ++it)
+        num_planners += it->second.size();
+
+    boost::progress_display progress(num_planners * runs, std::cout);
 
     // Iterate through all planner plugins
     for(std::map<std::string, std::vector<std::string> >::const_iterator it = planners.begin(); it != planners.end(); ++it)
@@ -581,6 +643,8 @@ void BenchmarkServer::runBenchmark(moveit_msgs::MotionPlanRequest request, const
                 collectMetrics(planner_data[j], mp_res, solved, total_time);
                 double metrics_time = (ros::WallTime::now() - start).toSec();
                 ROS_DEBUG("Spent %lf seconds collecting metrics", metrics_time);
+
+                ++progress;
             }
 
             benchmark_data_.push_back(planner_data);

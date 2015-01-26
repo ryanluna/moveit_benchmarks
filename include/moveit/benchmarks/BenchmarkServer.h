@@ -86,9 +86,15 @@ protected:
         std::string name;
     };
 
-    struct Constraints
+    struct PathConstraints
     {
         std::vector<moveit_msgs::Constraints> constraints;
+        std::string name;
+    };
+
+    struct TrajectoryConstraints
+    {
+        moveit_msgs::TrajectoryConstraints constraints;
         std::string name;
     };
 
@@ -127,7 +133,10 @@ protected:
     bool loadStates(const std::string& regex, std::vector<StartState>& start_states);
 
     /// Load all constraints matching the given regular expression from the warehouse
-    bool loadConstraints(const std::string& regex, std::vector<Constraints>& constraints);
+    bool loadPathConstraints(const std::string& regex, std::vector<PathConstraints>& constraints);
+
+    /// Load all trajectory constraints from the warehouse that match the given regular expression
+    bool loadTrajectoryConstraints(const std::string& regex, std::vector<TrajectoryConstraints>& constraints);
 
     /// Load all motion plan requests matching the given regular expression from the warehouse
     bool loadQueries(const std::string& regex, const std::string& scene_name,
@@ -135,7 +144,7 @@ protected:
 
     /// Duplicate the given benchmark request for all combinations of start states and path constraints
     void createRequestCombinations(const BenchmarkRequest& brequest, const std::vector<StartState>& start_states,
-                                   const std::vector<Constraints>& path_constraints, std::vector<BenchmarkRequest>& combos);
+                                   const std::vector<PathConstraints>& path_constraints, std::vector<BenchmarkRequest>& combos);
 
     /// Execute the given motion plan request on the set of planners for the set number of runs
     void runBenchmark(moveit_msgs::MotionPlanRequest request, const std::map<std::string, std::vector<std::string> >& planners, int runs);
@@ -145,7 +154,7 @@ protected:
     moveit_warehouse::PlanningSceneWorldStorage* psws_;
     moveit_warehouse::RobotStateStorage* rs_;
     moveit_warehouse::ConstraintsStorage* cs_;
-    moveit_warehouse::TrajectoryConstraintsStorage* tcs_;  // not used
+    moveit_warehouse::TrajectoryConstraintsStorage* tcs_;
 
     planning_scene::PlanningScenePtr planning_scene_;
 
