@@ -7,8 +7,6 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-find_library(LOG4CXX_LIBRARY log4cxx REQUIRED)
-
 find_package(catkin COMPONENTS
   moveit_ros_planning
   moveit_ros_warehouse
@@ -27,8 +25,8 @@ include_directories(${catkin_INCLUDE_DIRS} ${CMAKE_CURRENT_LIST_DIR}/include)
 link_directories(${catkin_LIBRARY_DIRS})
 
 add_library(${MOVEIT_LIB_NAME} src/BenchmarkOptions.cpp
-                               src/BenchmarkServer.cpp)
-target_link_libraries(${MOVEIT_LIB_NAME} ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${LOG4CXX_LIBRARY})
+                               src/BenchmarkExecutor.cpp)
+target_link_libraries(${MOVEIT_LIB_NAME} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 install(
   TARGETS

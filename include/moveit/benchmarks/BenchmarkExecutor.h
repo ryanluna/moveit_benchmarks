@@ -51,28 +51,48 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <boost/function.hpp>
 
 namespace moveit_benchmarks
 {
 
 /// A class that executes motion plan requests and aggregates data across multiple runs
 /// Note: This class operates outside of MoveGroup and does NOT use PlanningRequestAdapters
-class BenchmarkServer
+class BenchmarkExecutor
 {
 public:
-    BenchmarkServer(const std::string& robot_description_param="robot_description");
-    virtual ~BenchmarkServer();
+    /// Structure to hold information for a single run of a planner
+    typedef std::map<std::string, std::string> PlannerRunData;
+    /// Structure to hold information for a single planner's benchmark data.
+    typedef std::vector<PlannerRunData> PlannerBenchmarkData;
+
+    /// Definition of a query-switch benchmark event function.  Invoked before a new query is benchmarked.
+    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request, planning_scene::PlanningScenePtr)> QuerySwitchEventFunction;
+
+    /// Definition of a planner-switch benchmark event function. Invoked before every planner begins benchmarking a query.
+    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request)> PlannerSwitchEventFunction;
+
+    /// Definition of a pre-run benchmark event function.  Invoked immediately before each planner calls solve().
+    typedef boost::function<void(moveit_msgs::MotionPlanRequest& request)> PreRunEventFunction;
+
+    /// Definition of a post-run benchmark event function.  Invoked immediately after each planner calls solve().
+    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request, const planning_interface::MotionPlanDetailedResponse& response,
+                                 PlannerRunData& run_data)> PostRunEventFunction;
+
+
+    BenchmarkExecutor(const std::string& robot_description_param="robot_description");
+    virtual ~BenchmarkExecutor();
+
+    void addPreRunEvent(PreRunEventFunction func);
+    void addPostRunEvent(PostRunEventFunction func);
+    void addPlannerSwitchEvent(PlannerSwitchEventFunction func);
+    void addQuerySwitchEvent(QuerySwitchEventFunction func);
 
     virtual void clear();
 
     virtual bool runBenchmarks(const BenchmarkOptions& opts);
 
 protected:
-
-    /// Structure to hold information for a single call to 'solve'
-    typedef std::map<std::string, std::string> PlannerRunData;
-    /// Structure to hold information for a single planner's benchmark data.
-    typedef std::vector<PlannerRunData> PlannerBenchmarkData;
 
     struct BenchmarkRequest
     {
@@ -106,18 +126,6 @@ protected:
 
     virtual void writeOutput(const BenchmarkRequest& brequest, const std::string& start_time,
                              double benchmark_duration);
-
-    /// Invoked before each run of a benchmark
-    virtual void preRunEvent(moveit_msgs::MotionPlanRequest& request) {}
-    /// Invoked after each run of a benchmark
-    virtual void postRunEvent(const moveit_msgs::MotionPlanRequest& request,  planning_interface::MotionPlanDetailedResponse& response) {}
-
-    /// Invoked during benchmarking when the planner is changed
-    virtual void plannerSwitchEvent(moveit_msgs::MotionPlanRequest& request) {}
-
-    /// Invoked when the benchmark problem is changed (e.g., when running multiple queries,
-    /// this is called before each query starts benchmarking)
-    virtual void querySwitchEvent(moveit_msgs::MotionPlanRequest& request) {}
 
     /// Check that the desired planner plugins and algorithms exist for the given group
     bool plannerConfigurationsExist(const std::map<std::string, std::vector<std::string> >& planners, const std::string& group_name);
@@ -164,6 +172,11 @@ protected:
     std::map<std::string, planning_interface::PlannerManagerPtr> planner_interfaces_;
 
     std::vector<PlannerBenchmarkData> benchmark_data_;
+
+    std::vector<PreRunEventFunction> pre_event_fns_;
+    std::vector<PostRunEventFunction> post_event_fns_;
+    std::vector<PlannerSwitchEventFunction> planner_switch_fns_;
+    std::vector<QuerySwitchEventFunction> query_switch_fns_;
 };
 
 }
