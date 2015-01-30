@@ -40,6 +40,7 @@
 #include <boost/regex.hpp>
 #include <boost/progress.hpp>
 #include <boost/math/constants/constants.hpp>
+#include <boost/filesystem.hpp>
 #include <unistd.h>
 
 using namespace moveit_benchmarks;
@@ -786,11 +787,12 @@ void BenchmarkExecutor::writeOutput(const BenchmarkRequest& brequest, const std:
         hostname = "UNKNOWN";
 
     std::string filename = options_.getOutputDirectory();
-    if (filename.size() && !filename[filename.size()-1] == '/')
-    {
+    if (filename.size() && filename[filename.size()-1] != '/')
         filename.append("/");
-        // TODO: Make sure directory exists
-    }
+
+    // Ensure directories exist
+    boost::filesystem::create_directories(filename);
+
     filename += brequest.name + "_" + getHostname() + "_" + start_time + ".log";
     std::ofstream out(filename.c_str());
     if (!out)
