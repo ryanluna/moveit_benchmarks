@@ -36,6 +36,7 @@
 
 #include "moveit/benchmarks/BenchmarkExecutor.h"
 #include <moveit/version.h>
+#include <eigen_conversions/eigen_msg.h>
 
 #include <boost/regex.hpp>
 #include <boost/progress.hpp>
@@ -155,8 +156,10 @@ void BenchmarkExecutor::clear()
     benchmark_data_.clear();
     pre_event_fns_.clear();
     post_event_fns_.clear();
-    planner_switch_fns_.clear();
-    query_switch_fns_.clear();
+    planner_start_fns_.clear();
+    planner_completion_fns_.clear();
+    query_start_fns_.clear();
+    query_end_fns_.clear();
 }
 
 void BenchmarkExecutor::addPreRunEvent(PreRunEventFunction func)
@@ -169,14 +172,24 @@ void BenchmarkExecutor::addPostRunEvent(PostRunEventFunction func)
     post_event_fns_.push_back(func);
 }
 
-void BenchmarkExecutor::addPlannerSwitchEvent(PlannerSwitchEventFunction func)
+void BenchmarkExecutor::addPlannerStartEvent(PlannerStartEventFunction func)
 {
-    planner_switch_fns_.push_back(func);
+    planner_start_fns_.push_back(func);
 }
 
-void BenchmarkExecutor::addQuerySwitchEvent(QuerySwitchEventFunction func)
+void BenchmarkExecutor::addPlannerCompletionEvent(PlannerCompletionEventFunction func)
 {
-    query_switch_fns_.push_back(func);
+    planner_completion_fns_.push_back(func);
+}
+
+void BenchmarkExecutor::addQueryStartEvent(QueryStartEventFunction func)
+{
+    query_start_fns_.push_back(func);
+}
+
+void BenchmarkExecutor::addQueryCompletionEvent(QueryCompletionEventFunction func)
+{
+    query_end_fns_.push_back(func);
 }
 
 bool BenchmarkExecutor::runBenchmarks(const BenchmarkOptions& opts)
@@ -204,17 +217,20 @@ bool BenchmarkExecutor::runBenchmarks(const BenchmarkOptions& opts)
             else
                 planning_scene_->usePlanningSceneMsg(scene_msg);
 
-            // Calling query switch events
-            for(size_t j = 0; j < query_switch_fns_.size(); ++j)
-                query_switch_fns_[j](queries[i].request, planning_scene_);
+            // Calling query start events
+            for(size_t j = 0; j < query_start_fns_.size(); ++j)
+                query_start_fns_[j](queries[i].request, planning_scene_);
 
             ROS_INFO("Benchmarking query '%s' (%lu of %lu)", queries[i].name.c_str(), i+1, queries.size());
-            ros::WallTime startTime = ros::WallTime::now();
+            ros::WallTime start_time = ros::WallTime::now();
             runBenchmark(queries[i].request, options_.getPlannerConfigurations(), options_.getNumRuns());
-            double duration = (ros::WallTime::now() - startTime).toSec();
+            double duration = (ros::WallTime::now() - start_time).toSec();
+
+            for(size_t j = 0; j < query_end_fns_.size(); ++j)
+                query_end_fns_[j](queries[i].request, planning_scene_);
 
             writeOutput(queries[i],
-                        boost::posix_time::to_iso_extended_string(startTime.toBoost()),
+                        boost::posix_time::to_iso_extended_string(start_time.toBoost()),
                         duration);
         }
 
@@ -281,6 +297,9 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
     if (!ok)
         return false;
 
+    ROS_INFO("Benchmark loaded %lu starts, %lu goals, %lu path constraints, %lu trajectory constraints, and %lu queries",
+             start_states.size(), goal_constraints.size(), path_constraints.size(), traj_constraints.size(), queries.size());
+
     moveit_msgs::WorkspaceParameters workspace_parameters = opts.getWorkspaceParameters();
     // Make sure that workspace_parameters are set
     if (workspace_parameters.min_corner.x == workspace_parameters.max_corner.x && workspace_parameters.min_corner.x == 0.0 &&
@@ -296,6 +315,9 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
         workspace_parameters.max_corner.z = 5.0;
     }
 
+    std::vector<double> goal_offset;
+    opts.getGoalOffsets(goal_offset);
+
     // Create the combinations of BenchmarkRequests
 
     // 1) Create requests for combinations of start states,
@@ -309,6 +331,14 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
         brequest.request.goal_constraints = goal_constraints[i].constraints;
         brequest.request.group_name = opts.getGroupName();
         brequest.request.allowed_planning_time = opts.getTimeout();
+        brequest.request.num_planning_attempts = 1;
+
+        if (brequest.request.goal_constraints.size() == 1 &&
+            brequest.request.goal_constraints[0].position_constraints.size() == 1 &&
+            brequest.request.goal_constraints[0].orientation_constraints.size() == 1 &&
+            brequest.request.goal_constraints[0].visibility_constraints.size() == 0 &&
+            brequest.request.goal_constraints[0].joint_constraints.size() == 0)
+            shiftConstraintsByOffset(brequest.request.goal_constraints[0], goal_offset);
 
         std::vector<BenchmarkRequest> request_combos;
         createRequestCombinations(brequest, start_states, path_constraints, request_combos);
@@ -325,6 +355,7 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
         brequest.request = queries[i].request;
         brequest.request.group_name = opts.getGroupName();
         brequest.request.allowed_planning_time = opts.getTimeout();
+        brequest.request.num_planning_attempts = 1;
 
         // Make sure that workspace_parameters are set
         if (brequest.request.workspace_parameters.min_corner.x == brequest.request.workspace_parameters.max_corner.x &&
@@ -353,6 +384,14 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
         brequest.request.trajectory_constraints = traj_constraints[i].constraints;
         brequest.request.group_name = opts.getGroupName();
         brequest.request.allowed_planning_time = opts.getTimeout();
+        brequest.request.num_planning_attempts = 1;
+
+        if (brequest.request.trajectory_constraints.constraints.size() == 1 &&
+            brequest.request.trajectory_constraints.constraints[0].position_constraints.size() == 1 &&
+            brequest.request.trajectory_constraints.constraints[0].orientation_constraints.size() == 1 &&
+            brequest.request.trajectory_constraints.constraints[0].visibility_constraints.size() == 0 &&
+            brequest.request.trajectory_constraints.constraints[0].joint_constraints.size() == 0)
+            shiftConstraintsByOffset(brequest.request.trajectory_constraints.constraints[0], goal_offset);
 
         std::vector<BenchmarkRequest> request_combos;
         std::vector<PathConstraints> no_path_constraints;
@@ -362,6 +401,27 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
 
     options_ = opts;
     return true;
+}
+
+void BenchmarkExecutor::shiftConstraintsByOffset(moveit_msgs::Constraints& constraints, const std::vector<double> offset)
+{
+    Eigen::Affine3d offset_tf(Eigen::AngleAxis<double>(offset[3], Eigen::Vector3d::UnitX()) *
+                              Eigen::AngleAxis<double>(offset[4], Eigen::Vector3d::UnitY()) *
+                              Eigen::AngleAxis<double>(offset[5], Eigen::Vector3d::UnitZ()));
+    offset_tf.translation() = Eigen::Vector3d(offset[0], offset[1], offset[2]);
+
+    geometry_msgs::Pose constraint_pose_msg;
+    constraint_pose_msg.position = constraints.position_constraints[0].constraint_region.primitive_poses[0].position;
+    constraint_pose_msg.orientation = constraints.orientation_constraints[0].orientation;
+    Eigen::Affine3d constraint_pose;
+    tf::poseMsgToEigen(constraint_pose_msg, constraint_pose);
+
+    Eigen::Affine3d new_pose = constraint_pose * offset_tf;
+    geometry_msgs::Pose new_pose_msg;
+    tf::poseEigenToMsg(new_pose, new_pose_msg);
+
+    constraints.position_constraints[0].constraint_region.primitive_poses[0].position = new_pose_msg.position;
+    constraints.orientation_constraints[0].orientation = new_pose_msg.orientation;
 }
 
 void BenchmarkExecutor::createRequestCombinations(const BenchmarkRequest& brequest, const std::vector<StartState>& start_states,
@@ -486,6 +546,9 @@ bool BenchmarkExecutor::loadPlanningScene(const std::string& scene_name, moveit_
 bool BenchmarkExecutor::loadQueries(const std::string& regex, const std::string& scene_name,
                                     std::vector<BenchmarkRequest>& queries)
 {
+    if(regex.empty())
+        return true;
+
     std::vector<std::string> query_names;
     try
     {
@@ -580,6 +643,7 @@ bool BenchmarkExecutor::loadPathConstraints(const std::string& regex, std::vecto
                     PathConstraints constraint;
                     constraint.constraints.push_back(*constr);
                     constraint.name = cnames[i];
+                    constraints.push_back(constraint);
                 }
             }
             catch (std::runtime_error &ex)
@@ -650,9 +714,10 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request, con
             PlannerBenchmarkData planner_data(runs);
 
             request.planner_id = it->second[i];
-            // Planner switch events
-            for(size_t j = 0; j < planner_switch_fns_.size(); ++j)
-                planner_switch_fns_[j](request);
+
+            // Planner start events
+            for(size_t j = 0; j < planner_start_fns_.size(); ++j)
+                planner_start_fns_[j](request, planner_data);
 
             planning_interface::PlanningContextPtr context = planner_interfaces_[it->first]->getPlanningContext(planning_scene_, request);
             for(int j = 0; j < runs; ++j)
@@ -679,6 +744,10 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request, con
 
                 ++progress;
             }
+
+            // Planner completion events
+            for(size_t j = 0; j < planner_completion_fns_.size(); ++j)
+                planner_completion_fns_[j](request, planner_data);
 
             benchmark_data_.push_back(planner_data);
         }
@@ -793,7 +862,7 @@ void BenchmarkExecutor::writeOutput(const BenchmarkRequest& brequest, const std:
     // Ensure directories exist
     boost::filesystem::create_directories(filename);
 
-    filename += brequest.name + "_" + getHostname() + "_" + start_time + ".log";
+    filename += (options_.getBenchmarkName().empty() ? "" : options_.getBenchmarkName() + "_") + brequest.name + "_" + getHostname() + "_" + start_time + ".log";
     std::ofstream out(filename.c_str());
     if (!out)
     {

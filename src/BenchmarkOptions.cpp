@@ -62,6 +62,11 @@ double BenchmarkOptions::getTimeout() const
     return timeout_;
 }
 
+const std::string& BenchmarkOptions::getBenchmarkName() const
+{
+    return benchmark_name_;
+}
+
 const std::string& BenchmarkOptions::getGroupName() const
 {
     return group_name_;
@@ -97,6 +102,12 @@ const std::string& BenchmarkOptions::getTrajectoryConstraintRegex() const
     return trajectory_constraint_regex_;
 }
 
+void BenchmarkOptions::getGoalOffsets(std::vector<double>& offsets) const
+{
+    offsets.resize(6);
+    memcpy(&offsets[0], goal_offsets, 6 * sizeof(double));
+}
+
 const std::map<std::string, std::vector<std::string> >& BenchmarkOptions::getPlannerConfigurations() const
 {
     return planners_;
@@ -128,6 +139,7 @@ void BenchmarkOptions::readWarehouseOptions(ros::NodeHandle& nh)
 
 void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
 {
+    nh.param(std::string("benchmark_config/parameters/name"), benchmark_name_, std::string(""));
     nh.param(std::string("benchmark_config/parameters/runs"), runs_, 10);
     nh.param(std::string("benchmark_config/parameters/timeout"), timeout_, 10.0);
     nh.param(std::string("benchmark_config/parameters/output_directory"), output_directory_, std::string(""));
@@ -143,6 +155,15 @@ void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
     if (nh.hasParam("benchmark_config/parameters/workspace"))
         readWorkspaceParameters(nh);
 
+    // Reading in goal_offset (or defaulting to zero)
+    nh.param(std::string("benchmark_config/parameters/goal_offset/x"), goal_offsets[0], 0.0);
+    nh.param(std::string("benchmark_config/parameters/goal_offset/y"), goal_offsets[1], 0.0);
+    nh.param(std::string("benchmark_config/parameters/goal_offset/z"), goal_offsets[2], 0.0);
+    nh.param(std::string("benchmark_config/parameters/goal_offset/roll"),   goal_offsets[3], 0.0);
+    nh.param(std::string("benchmark_config/parameters/goal_offset/pitch"),  goal_offsets[4], 0.0);
+    nh.param(std::string("benchmark_config/parameters/goal_offset/yaw"),    goal_offsets[5], 0.0);
+
+    ROS_INFO("Benchmark name: '%s'", benchmark_name_.c_str());
     ROS_INFO("Benchmark #runs: %d", runs_);
     ROS_INFO("Benchmark timeout: %f secs", timeout_);
     ROS_INFO("Benchmark group: %s", group_name_.c_str());
@@ -150,6 +171,7 @@ void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
     ROS_INFO("Benchmark start state regex: '%s':", start_state_regex_.c_str());
     ROS_INFO("Benchmark goal constraint regex: '%s':", goal_constraint_regex_.c_str());
     ROS_INFO("Benchmark path constraint regex: '%s':", path_constraint_regex_.c_str());
+    ROS_INFO("Benchmark goal offsets (%f %f %f, %f %f %f)", goal_offsets[0], goal_offsets[1], goal_offsets[2], goal_offsets[3], goal_offsets[4], goal_offsets[5]);
     ROS_INFO("Benchmark output directory: %s", output_directory_.c_str());
     ROS_INFO_STREAM("Benchmark workspace: " << workspace_);
 }

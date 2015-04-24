@@ -66,11 +66,17 @@ public:
     /// Structure to hold information for a single planner's benchmark data.
     typedef std::vector<PlannerRunData> PlannerBenchmarkData;
 
-    /// Definition of a query-switch benchmark event function.  Invoked before a new query is benchmarked.
-    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request, planning_scene::PlanningScenePtr)> QuerySwitchEventFunction;
+    /// Definition of a query-start benchmark event function.  Invoked before a new query is benchmarked.
+    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request, planning_scene::PlanningScenePtr)> QueryStartEventFunction;
 
-    /// Definition of a planner-switch benchmark event function. Invoked before every planner begins benchmarking a query.
-    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request)> PlannerSwitchEventFunction;
+    /// Definition of a query-end benchmark event function.  Invoked after a query has finished benchmarking.
+    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request, planning_scene::PlanningScenePtr)> QueryCompletionEventFunction;
+
+    /// Definition of a planner-switch benchmark event function. Invoked before a planner starts any runs for a particular query.
+    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request, PlannerBenchmarkData& benchmark_data)> PlannerStartEventFunction;
+
+    /// Definition of a planner-switch benchmark event function. Invoked after a planner completes all runs for a particular query.
+    typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request, PlannerBenchmarkData& benchmark_data)> PlannerCompletionEventFunction;
 
     /// Definition of a pre-run benchmark event function.  Invoked immediately before each planner calls solve().
     typedef boost::function<void(moveit_msgs::MotionPlanRequest& request)> PreRunEventFunction;
@@ -85,8 +91,10 @@ public:
 
     void addPreRunEvent(PreRunEventFunction func);
     void addPostRunEvent(PostRunEventFunction func);
-    void addPlannerSwitchEvent(PlannerSwitchEventFunction func);
-    void addQuerySwitchEvent(QuerySwitchEventFunction func);
+    void addPlannerStartEvent(PlannerStartEventFunction func);
+    void addPlannerCompletionEvent(PlannerCompletionEventFunction func);
+    void addQueryStartEvent(QueryStartEventFunction func);
+    void addQueryCompletionEvent(QueryCompletionEventFunction func);
 
     virtual void clear();
 
@@ -126,6 +134,8 @@ protected:
 
     virtual void writeOutput(const BenchmarkRequest& brequest, const std::string& start_time,
                              double benchmark_duration);
+
+    void shiftConstraintsByOffset(moveit_msgs::Constraints& constraints, const std::vector<double> offset);
 
     /// Check that the desired planner plugins and algorithms exist for the given group
     bool plannerConfigurationsExist(const std::map<std::string, std::vector<std::string> >& planners, const std::string& group_name);
@@ -175,8 +185,10 @@ protected:
 
     std::vector<PreRunEventFunction> pre_event_fns_;
     std::vector<PostRunEventFunction> post_event_fns_;
-    std::vector<PlannerSwitchEventFunction> planner_switch_fns_;
-    std::vector<QuerySwitchEventFunction> query_switch_fns_;
+    std::vector<PlannerStartEventFunction> planner_start_fns_;
+    std::vector<PlannerCompletionEventFunction> planner_completion_fns_;
+    std::vector<QueryStartEventFunction> query_start_fns_;
+    std::vector<QueryCompletionEventFunction> query_end_fns_;
 };
 
 }

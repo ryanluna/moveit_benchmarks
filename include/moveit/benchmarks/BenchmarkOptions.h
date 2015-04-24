@@ -61,6 +61,7 @@ public:
 
     int getNumRuns() const;
     double getTimeout() const;
+    const std::string& getBenchmarkName() const;
     const std::string& getGroupName() const;
     const std::string& getOutputDirectory() const;
     const std::string& getQueryRegex() const;
@@ -68,6 +69,7 @@ public:
     const std::string& getGoalConstraintRegex() const;
     const std::string& getPathConstraintRegex() const;
     const std::string& getTrajectoryConstraintRegex() const;
+    void getGoalOffsets(std::vector<double>& offsets) const;
     const std::map<std::string, std::vector<std::string> >& getPlannerConfigurations() const;
 
     const std::string& getWorkspaceFrameID() const;
@@ -82,6 +84,7 @@ protected:
     void readPlannerConfigs(ros::NodeHandle& nh);
 
     void readWorkspaceParameters(ros::NodeHandle& nh);
+    void readGoalOffset(ros::NodeHandle& nh);
 
     /// warehouse parameters
     std::string hostname_;
@@ -91,6 +94,7 @@ protected:
     /// benchmark parameters
     int runs_;
     double timeout_;
+    std::string benchmark_name_;
     std::string group_name_;
     std::string output_directory_;
     std::string query_regex_;
@@ -98,6 +102,7 @@ protected:
     std::string goal_constraint_regex_;
     std::string path_constraint_regex_;
     std::string trajectory_constraint_regex_;
+    double goal_offsets[6];
 
     /// planner configurations
     std::map<std::string, std::vector<std::string> > planners_;
