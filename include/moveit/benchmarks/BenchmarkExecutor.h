@@ -37,6 +37,10 @@
 #ifndef MOVEIT_BENCHMARKS_BENCHMARK_SERVER_
 #define MOVEIT_BENCHMARKS_BENCHMARK_SERVER_
 
+#ifdef USE_BOOST_FILESYSTEM_V2
+#define BOOST_FILESYSTEM_VERSION 2
+#endif
+
 #include "moveit/benchmarks/BenchmarkOptions.h"
 
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>

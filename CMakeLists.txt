@@ -7,6 +7,15 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+find_package(Boost REQUIRED filesystem)
+
+# In ROS Hydro, MoveIt links against version 2 of Boost Filesystem
+# Force everything to use this version to prevent compile error
+if ($ENV{ROS_DISTRO} STREQUAL "hydro")
+  message("Explicitly linking against Boost.Filesystem v2")
+  add_definitions(-DUSE_BOOST_FILESYSTEM_V2)
+endif()
+
 find_package(catkin COMPONENTS
   moveit_ros_planning
   moveit_ros_warehouse
