@@ -93,6 +93,10 @@ public:
     BenchmarkExecutor(const std::string& robot_description_param="robot_description");
     virtual ~BenchmarkExecutor();
 
+    // Initialize the benchmark executor by loading planning pipelines from the
+    // given set of classes
+    void initialize(const std::vector<std::string>& plugin_classes);
+
     void addPreRunEvent(PreRunEventFunction func);
     void addPostRunEvent(PostRunEventFunction func);
     void addPlannerStartEvent(PlannerStartEventFunction func);

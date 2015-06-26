@@ -79,35 +79,6 @@ BenchmarkExecutor::BenchmarkExecutor(const std::string& robot_description_param)
     {
         ROS_FATAL_STREAM("Exception while creating planning plugin loader " << ex.what());
     }
-
-    // Load the planning plugins
-    const std::vector<std::string> &classes = planner_plugin_loader_->getDeclaredClasses();
-    for (std::size_t i = 0 ; i < classes.size() ; ++i)
-    {
-        ROS_INFO("Attempting to load and configure %s", classes[i].c_str());
-        try
-        {
-            boost::shared_ptr<planning_interface::PlannerManager> p = planner_plugin_loader_->createInstance(classes[i]);
-            p->initialize(planning_scene_->getRobotModel(), "");
-            planner_interfaces_[classes[i]] = p;
-        }
-        catch (pluginlib::PluginlibException& ex)
-        {
-            ROS_ERROR_STREAM("Exception while loading planner '" << classes[i] << "': " << ex.what());
-        }
-    }
-
-    // error check
-    if (planner_interfaces_.empty())
-        ROS_ERROR("No planning plugins have been loaded. Nothing to do for the benchmarking service.");
-    else
-    {
-        std::stringstream ss;
-        for (std::map<std::string, boost::shared_ptr<planning_interface::PlannerManager> >::const_iterator it = planner_interfaces_.begin() ;
-            it != planner_interfaces_.end(); ++it)
-        ss << it->first << " ";
-        ROS_INFO("Available planner instances: %s", ss.str().c_str());
-    }
 }
 
 BenchmarkExecutor::~BenchmarkExecutor()
@@ -123,6 +94,47 @@ BenchmarkExecutor::~BenchmarkExecutor()
     if (tcs_)
         delete tcs_;
     delete psm_;
+}
+
+void BenchmarkExecutor::initialize(const std::vector<std::string>& plugin_classes)
+{
+    planner_interfaces_.clear();
+
+    // Load the planning plugins
+    const std::vector<std::string> &classes = planner_plugin_loader_->getDeclaredClasses();
+
+    for(size_t i = 0; i < plugin_classes.size(); ++i)
+    {
+        std::vector<std::string>::const_iterator it = std::find(classes.begin(), classes.end(), plugin_classes[i]);
+        if (it == classes.end())
+        {
+            ROS_ERROR("Failed to find plugin_class %s", plugin_classes[i].c_str());
+            return;
+        }
+
+        try
+        {
+            boost::shared_ptr<planning_interface::PlannerManager> p = planner_plugin_loader_->createInstance(plugin_classes[i]);
+            p->initialize(planning_scene_->getRobotModel(), "");
+            planner_interfaces_[plugin_classes[i]] = p;
+        }
+        catch (pluginlib::PluginlibException& ex)
+        {
+            ROS_ERROR_STREAM("Exception while loading planner '" << plugin_classes[i] << "': " << ex.what());
+        }
+    }
+
+    // error check
+    if (planner_interfaces_.empty())
+        ROS_ERROR("No planning plugins have been loaded. Nothing to do for the benchmarking service.");
+    else
+    {
+        std::stringstream ss;
+        for (std::map<std::string, boost::shared_ptr<planning_interface::PlannerManager> >::const_iterator it = planner_interfaces_.begin() ;
+            it != planner_interfaces_.end(); ++it)
+        ss << it->first << " ";
+        ROS_INFO("Available planner instances: %s", ss.str().c_str());
+    }
 }
 
 void BenchmarkExecutor::clear()
@@ -194,6 +206,12 @@ void BenchmarkExecutor::addQueryCompletionEvent(QueryCompletionEventFunction fun
 
 bool BenchmarkExecutor::runBenchmarks(const BenchmarkOptions& opts)
 {
+    if (planner_interfaces_.size() == 0)
+    {
+        ROS_ERROR("No planning interfaces configured.  Did you call BenchmarkExecutor::initialize?");
+        return false;
+    }
+
     std::vector<BenchmarkRequest> queries;
     moveit_msgs::PlanningScene scene_msg;
 
@@ -295,7 +313,10 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
               loadQueries(opts.getQueryRegex(), opts.getSceneName(), queries);
 
     if (!ok)
+    {
+        ROS_ERROR("Failed to load benchmark stuff");
         return false;
+    }
 
     ROS_INFO("Benchmark loaded %lu starts, %lu goals, %lu path constraints, %lu trajectory constraints, and %lu queries",
              start_states.size(), goal_constraints.size(), path_constraints.size(), traj_constraints.size(), queries.size());
@@ -365,7 +386,7 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
             brequest.request.workspace_parameters.min_corner.z == brequest.request.workspace_parameters.max_corner.z &&
             brequest.request.workspace_parameters.min_corner.z == 0.0)
         {
-            ROS_WARN("Workspace parameters do not appear to be set for request %s.  Setting defaults", queries[i].name.c_str());
+            //ROS_WARN("Workspace parameters are not set for request %s.  Setting defaults", queries[i].name.c_str());
             brequest.request.workspace_parameters = workspace_parameters;
         }
 
@@ -499,7 +520,10 @@ bool BenchmarkExecutor::plannerConfigurationsExist(const std::map<std::string, s
 
             if (!planner_exists)
             {
-                ROS_ERROR("Planner '%s' does NOT exist for group '%s'", it->second[i].c_str(), group_name.c_str());
+                ROS_ERROR("Planner '%s' does NOT exist for group '%s' in pipeline '%s'", it->second[i].c_str(), group_name.c_str(), it->first.c_str());
+                std::cout << "There are " << config_map.size() << " planner entries: " << std::endl;
+                for(planning_interface::PlannerConfigurationMap::const_iterator map_it = config_map.begin(); map_it != config_map.end() && !planner_exists; ++map_it)
+                    std::cout << map_it->second.name << std::endl;
                 return false;
             }
         }

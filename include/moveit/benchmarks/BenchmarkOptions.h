@@ -71,6 +71,7 @@ public:
     const std::string& getTrajectoryConstraintRegex() const;
     void getGoalOffsets(std::vector<double>& offsets) const;
     const std::map<std::string, std::vector<std::string> >& getPlannerConfigurations() const;
+    void getPlannerPluginList(std::vector<std::string>& plugin_list) const;
 
     const std::string& getWorkspaceFrameID() const;
     const moveit_msgs::WorkspaceParameters& getWorkspaceParameters() const;

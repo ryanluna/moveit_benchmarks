@@ -113,6 +113,13 @@ const std::map<std::string, std::vector<std::string> >& BenchmarkOptions::getPla
     return planners_;
 }
 
+void BenchmarkOptions::getPlannerPluginList(std::vector<std::string>& plugin_list) const
+{
+    plugin_list.clear();
+    for(std::map<std::string, std::vector<std::string> >::const_iterator it = planners_.begin(); it != planners_.end(); ++it)
+        plugin_list.push_back(it->first);
+}
+
 const std::string& BenchmarkOptions::getWorkspaceFrameID() const
 {
     return workspace_.header.frame_id;
@@ -210,7 +217,7 @@ void BenchmarkOptions::readPlannerConfigs(ros::NodeHandle& nh)
         {
             if (planner_configs[i].getType() != XmlRpc::XmlRpcValue::TypeStruct)
             {
-                ROS_WARN("Malformed YAML for planner configurations");
+                ROS_WARN("Improper YAML type for planner configurations");
                 continue;
             }
             if (!planner_configs[i].hasMember("plugin") || !planner_configs[i].hasMember("planners"))
