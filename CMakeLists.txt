@@ -37,9 +37,12 @@ add_library(${MOVEIT_LIB_NAME} src/BenchmarkOptions.cpp
                                src/BenchmarkExecutor.cpp)
 target_link_libraries(${MOVEIT_LIB_NAME} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
+add_executable(moveit_run_benchmark src/RunBenchmark.cpp)
+target_link_libraries(moveit_run_benchmark ${MOVEIT_LIB_NAME} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
 install(
   TARGETS
-    ${MOVEIT_LIB_NAME}
+    ${MOVEIT_LIB_NAME} moveit_run_benchmark
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
